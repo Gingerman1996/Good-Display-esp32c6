@@ -1,12 +1,13 @@
 # Good-Display ESP32-C6 Port
 
-โปรเจ็กต์นี้เป็นการพอร์ตตัวอย่าง Arduino สำหรับจอ e-paper GDEQ0426T82-T01C และคอนโทรลเลอร์ทัช FT6336 มายัง ESP-IDF สำหรับ ESP32-C6 โดยเพิ่มโครงสร้างเชิงวัตถุ, รองรับการแสดงผลผ่าน EPD, การอ่านทัช, สแกนบัส I²C และการทำงานร่วมกับ USB CDC (บนชิปที่รองรับ TinyUSB)
+โปรเจ็กต์นี้เป็นการพอร์ตตัวอย่าง Arduino สำหรับจอ e-paper GDEQ0426T82-T01C และคอนโทรลเลอร์ทัช FT6336 มายัง ESP-IDF สำหรับ ESP32-C6 โดยเพิ่มโครงสร้างเชิงวัตถุ, รองรับการแสดงผลผ่าน EPD, การอ่านทัช, สแกนบัส I²C และการทำงานร่วมกับ USB CDC (บนชิปที่รองรับ TinyUSB) พร้อมแยกโค้ดส่วนฮาร์ดแวร์ออกเป็น ESP-IDF component (`gde_display`) เพื่อให้ `main` โฟกัสที่ลูปแอปพลิเคชันอย่างเดียว
 
 ## Design Pattern & Architectural Decisions
 
+- **Component Factorisation** – โค้ดฝั่ง driver/assets ถูกย้ายไปไว้ใน `components/gde_display` ทำให้สามารถ reuse หรือเอาไปใช้กับโปรเจ็กต์อื่นได้ง่ายขึ้น โดย `main` ยังคงเป็น entry point เพียงไฟล์เดียว
 - **Driver Abstraction** – คลาส `epd::Driver` และ `ft6336::Driver` ทำหน้าที่เป็น wrapper แบบ Facade เหนือ ESP-IDF HAL ช่วยดึงรายละเอียดการกำหนดค่า GPIO/I²C/SPI ออกจาก `app_main`
 - **Namespace Encapsulation** – ใช้ namespace (`epd`, `ft6336`, `usb_cdc`) เพื่อแบ่งขอบเขตโค้ดแต่ละส่วน ทำให้ง่ายต่อการขยายหรือเปลี่ยน implementation ภายหลัง
-- **Resource Separation** – ไฟล์ `assets.cpp` เก็บข้อมูลบิตแมพรูปภาพแยกจากโค้ดหลัก ทำให้ง่ายต่อการอัปเดตรูปโดยไม่ต้องแตะ logic
+- **Resource Separation** – ไฟล์ `assets.cpp` ใน component เก็บข้อมูลบิตแมพรูปภาพแยกจากโค้ดหลัก ทำให้ง่ายต่อการอัปเดตรูปโดยไม่ต้องแตะ logic
 - **Graceful Degradation** – สำหรับชิปที่ไม่มี TinyUSB จะลิงก์กับ `usb_cdc_stub.cpp` แทน ทำให้ build ผ่านได้แม้ไม่มีฟีเจอร์ CDC
 
 ## Layering Overview
@@ -18,12 +19,11 @@
 │    การจัดการ touch            │
 ├─────────────────────────────┤
 │ Hardware Abstraction Layer   │
-│  - `epd::Driver` บน SPI       │
-│  - `ft6336::Driver` บน I²C    │
-│  - `usb_cdc` facade          │
+│  - `epd::Driver` / `ft6336::Driver` ใน `components/gde_display`
+│  - `usb_cdc` facade ใน `main`
 ├─────────────────────────────┤
 │ Assets / Data Layer          │
-│  - `assets.cpp`              │
+│  - `components/gde_display/assets.cpp`
 ├─────────────────────────────┤
 │ ESP-IDF Framework & HAL      │
 └─────────────────────────────┘
@@ -108,13 +108,15 @@ idf.py -p /dev/tty.usbmodem11101 monitor
 
 ```
 ├── CMakeLists.txt           # โปรเจ็กต์ ESP-IDF
+├── components/
+│   └── gde_display/
+│       ├── assets.cpp/.h    # bitmap resources
+│       ├── epd_driver.cpp/.h
+│       ├── ft6336.cpp/.h
+│       └── CMakeLists.txt   # ลงทะเบียน component
 ├── main/
-│   ├── assets.cpp/.h        # bitmap resources
-│   ├── epd_driver.cpp/.h    # e-paper driver
-│   ├── ft6336.cpp/.h        # touch driver
 │   ├── usb_cdc.cpp/.h       # USB CDC facade
 │   ├── usb_cdc_stub.cpp     # stub สำหรับชิปที่ไม่รองรับ TinyUSB
 │   └── main.cpp             # application logic
 └── README.md                # (ไฟล์นี้)
 ```
-

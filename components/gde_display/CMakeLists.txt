@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "assets.cpp"
+        "epd_driver.cpp"
+        "ft6336.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+)
