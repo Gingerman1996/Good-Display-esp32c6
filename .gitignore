@@ -1,0 +1,20 @@
+# ESP-IDF build artifacts
+/build/
+/sdkconfig
+/sdkconfig.old
+/sdkconfig.defaults.old
+/GDE
+GDEQ0426T82-T01C_Arduino/
+
+# IDE / tooling caches
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python virtual environments
+.venv/
+venv/
+
+# macOS
+.DS_Store
