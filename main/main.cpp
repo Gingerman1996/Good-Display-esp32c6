@@ -9,7 +9,6 @@
 #include "assets.h"
 #include "epd_driver.h"
 #include "ft6336.h"
-#include "usb_cdc.h"
 
 namespace {
 
@@ -89,12 +88,7 @@ extern "C" void app_main(void) {
     epd::Driver epd_driver;
     ft6336::Driver touch_driver;
 
-    usb_cdc::init();
-#ifdef CONFIG_TINYUSB_ENABLED
-    usb_cdc::print("USB CDC พร้อมใช้งาน\r\n");
-#else
-    ESP_LOGI(TAG, "USB CDC not available on this target");
-#endif
+    ESP_LOGI(TAG, "USB CDC support disabled");
 
     ESP_LOGI(TAG, "initialising peripherals");
     ESP_ERROR_CHECK(epd_driver.init(epd_cfg));
@@ -144,10 +138,6 @@ extern "C" void app_main(void) {
                     if (updated) {
                         ESP_LOGI(TAG, "touch (%u,%u) -> value %d", active_point->x,
                                  active_point->y, current_value);
-#ifdef CONFIG_TINYUSB_ENABLED
-                        usb_cdc::printf("touch (%u,%u) -> value %d\r\n", active_point->x,
-                                        active_point->y, current_value);
-#endif
                         showInitialFrame(epd_driver, current_value);
                         vTaskDelay(pdMS_TO_TICKS(150));
                     }
@@ -160,9 +150,6 @@ extern "C" void app_main(void) {
             last_increment = now;
             current_value = (current_value + 1) % 10;
             showInitialFrame(epd_driver, current_value);
-#ifdef CONFIG_TINYUSB_ENABLED
-            usb_cdc::printf("auto -> value %d\r\n", current_value);
-#endif
         }
         vTaskDelay(pdMS_TO_TICKS(15));
     }
