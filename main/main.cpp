@@ -16,11 +16,14 @@
 namespace {
 
 constexpr const char *TAG = "app";
-constexpr TickType_t kAutoIncrementInterval = pdMS_TO_TICKS(1000);
 constexpr size_t kLvglBufferLines = 32;
 constexpr lv_color_format_t kLvglColorFormat = LV_COLOR_FORMAT_RGB565;
 constexpr size_t kLvglBufferSize =
     LV_DRAW_BUF_SIZE(epd::kWidth, kLvglBufferLines, kLvglColorFormat);
+constexpr TickType_t kMessageInterval = pdMS_TO_TICKS(5000);
+
+constexpr const char *kMessages[] = {"Airgradient", "Welcome"};
+constexpr size_t kMessageCount = sizeof(kMessages) / sizeof(kMessages[0]);
 
 struct LvglDisplayContext {
   epd::Driver *epd{nullptr};
@@ -181,20 +184,8 @@ void initLvgl(epd::Driver &epd_driver) {
   g_lvgl_ctx.label = lv_label_create(screen);
   lv_obj_set_style_text_color(g_lvgl_ctx.label, lv_color_black(), LV_PART_MAIN);
   lv_obj_set_style_text_font(g_lvgl_ctx.label, &lv_font_montserrat_48, LV_PART_MAIN);
-  lv_label_set_text(g_lvgl_ctx.label, "00000");
+  lv_label_set_text(g_lvgl_ctx.label, kMessages[0]);
   lv_obj_center(g_lvgl_ctx.label);
-}
-
-void updateCounterLabel(int value) {
-  if (g_lvgl_ctx.label == nullptr) {
-    return;
-  }
-
-  char text[6] = {};
-  for (int i = 0; i < 5; ++i) {
-    text[i] = static_cast<char>('0' + value);
-  }
-  lv_label_set_text(g_lvgl_ctx.label, text);
 }
 
 } // namespace
@@ -227,17 +218,18 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(epd_driver.loadBaseMap(WhileBG, true));
 
   initLvgl(epd_driver);
-  int current_value = 0;
-  updateCounterLabel(current_value);
-  lv_timer_handler();
-  TickType_t last_increment = xTaskGetTickCount();
+  size_t message_index = 0;
+  TickType_t last_switch = xTaskGetTickCount();
 
   while (true) {
     TickType_t now = xTaskGetTickCount();
-    if (now - last_increment >= kAutoIncrementInterval) {
-      last_increment = now;
-      current_value = (current_value + 1) % 10;
-      updateCounterLabel(current_value);
+    if (now - last_switch >= kMessageInterval) {
+      last_switch = now;
+      message_index = (message_index + 1) % kMessageCount;
+      if (g_lvgl_ctx.label != nullptr) {
+        lv_label_set_text(g_lvgl_ctx.label, kMessages[message_index]);
+        lv_obj_center(g_lvgl_ctx.label);
+      }
     }
     lv_timer_handler();
     vTaskDelay(pdMS_TO_TICKS(50));
