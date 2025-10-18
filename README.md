@@ -1,108 +1,157 @@
-# Good-Display ESP32-C6 Port
+# คู่มือโปรเจ็กต์ Good-Display ESP32-C6 (ภาษาไทย)
 
-โปรเจ็กต์นี้เป็นการพอร์ตตัวอย่าง Arduino สำหรับจอ e-paper GDEQ0426T82-T01C และคอนโทรลเลอร์ทัช FT6336 มายัง ESP-IDF สำหรับ ESP32-C6 โดยเพิ่มโครงสร้างเชิงวัตถุ, รองรับการแสดงผลผ่าน EPD, การอ่านทัช, สแกนบัส I²C พร้อมแยกโค้ดส่วนฮาร์ดแวร์ออกเป็น ESP-IDF component (`gde_display`) เพื่อให้ `main` โฟกัสที่ลูปแอปพลิเคชันอย่างเดียว
+โปรเจ็กต์นี้สาธิตการใช้งาน **จอ e-paper GDEQ0426T82-T01C (SSD1677)** คู่กับ **ESP32-C6** โดยใช้ ESP-IDF แบบเต็มรูปแบบ พร้อมผสาน **LVGL v9** ให้เรนเดอร์ UI และส่งผลลัพธ์กลับไปยังจอขาวดำ 1 บิตผ่านไดรเวอร์ที่เขียนเอง (`epd::Driver`). ระบบยังแยกโค้ดฮาร์ดแวร์ออกเป็น component (`components/gde_display`) เพื่อให้ reuse หรือนำไปต่อยอดได้ง่าย
 
-## Design Pattern & Architectural Decisions
+---
 
-- **Component Factorisation** – โค้ดฝั่ง driver/assets ถูกย้ายไปไว้ใน `components/gde_display` ทำให้สามารถ reuse หรือเอาไปใช้กับโปรเจ็กต์อื่นได้ง่ายขึ้น โดย `main` ยังคงเป็น entry point เพียงไฟล์เดียว
-- **Driver Abstraction** – คลาส `epd::Driver` และ `ft6336::Driver` ทำหน้าที่เป็น wrapper แบบ Facade เหนือ ESP-IDF HAL ช่วยดึงรายละเอียดการกำหนดค่า GPIO/I²C/SPI ออกจาก `app_main`
-- **Namespace Encapsulation** – ใช้ namespace (`epd`, `ft6336`) เพื่อแบ่งขอบเขตโค้ดแต่ละส่วน ทำให้ง่ายต่อการขยายหรือเปลี่ยน implementation ภายหลัง
-- **Resource Separation** – ไฟล์ `assets.cpp` ใน component เก็บข้อมูลบิตแมพรูปภาพแยกจากโค้ดหลัก ทำให้ง่ายต่อการอัปเดตรูปโดยไม่ต้องแตะ logic
-
-## Layering Overview
+## ภาพรวมการทำงาน
 
 ```
-┌─────────────────────────────┐
-│ Application Layer            │ → `main/main.cpp`
-│  - ลูปหลัก, การนับตัวเลข,    │
-│    การจัดการ touch            │
-├─────────────────────────────┤
-│ Hardware Abstraction Layer   │
-│  - `epd::Driver` / `ft6336::Driver` ใน `components/gde_display`
-├─────────────────────────────┤
-│ Assets / Data Layer          │
-│  - `components/gde_display/assets.cpp`
-├─────────────────────────────┤
-│ ESP-IDF Framework & HAL      │
-└─────────────────────────────┘
+┌────────────────────────────┐
+│ Application Layer          │ → main/main.cpp
+│  - ตั้งค่า LVGL            │
+│  - อัปเดตตัวเลขทุกวินาที │
+│  - เรียก lv_timer_handler │
+├────────────────────────────┤
+│ LVGL UI Layer              │
+│  - จัดการวิดเจ็ต/การเรนเดอร์│
+│  - ส่ง callback flush     │
+├────────────────────────────┤
+│ Hardware Driver (component)│
+│  - epd::Driver (SSD1677)   │
+│  - drawBitmap / partial    │
+│  - assets (bitmap พื้นฐาน)│
+├────────────────────────────┤
+│ ESP-IDF HAL                │
+└────────────────────────────┘
 ```
 
-## Simplified Class Diagram
+### ลำดับเหตุการณ์หลัก
+1. `app_main` ตั้งค่าขา SPI/Busy/MOSI ของจอ → `epd::Driver::init`
+2. รีเซ็ตจอและล้างหน้าจอ → `hardwareInit()` + `clear()`
+3. โหลดภาพพื้นหลัง (`WhileBG`) ให้เป็น base map
+4. เรียก `initLvgl()` เพื่อสร้าง display object ของ LVGL และตั้ง `flush_cb`
+5. ในลูปหลัก:
+   - เพิ่มค่าตัวเลขทุก 1 วินาที
+   - อัปเดตข้อความบน label ของ LVGL
+   - เรียก `lv_timer_handler()` และหน่วงเวลาเล็กน้อย
 
-```
-          +---------------------+
-          | epd::Driver         |
-          |---------------------|
-          | - cfg_ : Config     |
-          | - spi_ : handle     |
-          | - initialised_      |
-          |---------------------|
-          | + init(cfg)         |
-          | + hardwareInit()    |
-          | + clear()           |
-          | + loadBaseMap()     |
-          | + displayDigits()   |
-          +----------+----------+
-                     |
-          +----------v----------+
-          | ft6336::Driver      |
-          |---------------------|
-          | - cfg_ : Config     |
-          | - initialised_      |
-          |---------------------|
-          | + init(cfg)         |
-          | + touchReady()      |
-          | + scan(data)        |
-          +----------+----------+
-```
+เมื่อ LVGL ต้องวาดหน้าจอใหม่จะเรียก `lvglFlushCallback()` ซึ่งจะแปลงบัฟเฟอร์สี 16 บิตเป็นบิตแมป 1 บิต แล้วใช้ `epd::Driver::drawBitmap()` เขียนลงจอแบบ partial refresh
 
-## Build & Flash
+---
+
+## รายละเอียดโค้ดหลัก
+
+### `main/main.cpp`
+- กำหนดค่า render buffer ของ LVGL เป็น line buffer 32 บรรทัด เพื่อลดการใช้ RAM (`kLvglBufferLines`)
+- สร้าง `LvglDisplayContext` เก็บข้อมูลที่ต้องใช้ใน flush callback (ตัวชี้ไปยัง `epd::Driver`, label, scratch buffer)
+- `lvglFlushCallback()`:
+  - ตรวจสอบพิกัดจาก LVGL แล้วจัดให้เป็น byte boundary (ต้องหาร 8 ลงตัว)
+  - คำนวณความสว่างจากสี RGB565 → เลือกว่าจะพ่นบิตเป็นขาว/ดำ
+  - จัดการ mirror แนวนอนให้ตรงกับทิศของฮาร์ดแวร์
+  - เรียก `epd::Driver::drawBitmap()` และปิดด้วย `lv_display_flush_ready()`
+- `updateCounterLabel()` สร้างสตริงตัวเลข 5 หลัก (ค่าซ้ำกัน) แล้วตั้งข้อความบน label
+
+### `components/gde_display/epd_driver.*`
+- ห่อหุ้ม HAL ของ ESP-IDF:
+  - `init()` สร้าง bus SPI สำหรับพาแนล
+  - `hardwareInit()` ส่งคำสั่งตั้งต้น SSD1677
+  - `loadBaseMap()` โหลด frame buffer เต็มจอ (ใช้ตอนเริ่มงาน)
+  - `drawBitmap()` (เพิ่มใหม่) เรียก `writePartialWindow()` แล้วสั่ง `partialUpdate()` เพื่ออัปเดตเฉพาะพื้นที่ที่ LVGL ขอ
+- `writePartialWindow()` จะตั้งค่าหน้าต่าง RAM บนจอ, เขียนข้อมูล, และสั่ง update
+
+### `main/idf_component.yml` และ `dependencies.lock`
+- ระบุการดึง component `lvgl/lvgl` เวอร์ชัน `^9.0.0`
+- `dependencies.lock` ถูกสร้างโดย component manager เพื่อ lock เวอร์ชันของ dependency
+
+### `managed_components/lvgl__lvgl/`
+- เป็นสำเนาโค้ดของ LVGL ที่ดึงมาจาก component registry (ไม่ควรแก้ไขไฟล์ภายในโดยตรง)
+
+---
+
+## การตั้งค่าสิ่งแวดล้อม & สั่ง Build/Flash
 
 ```bash
-. $HOME/esp/v5.5.1/export.sh
-idf.py set-target esp32c6
+# เปิดใช้งาน ESP-IDF 5.5.1
+source $HOME/esp/v5.5.1/esp-idf/export.sh
+
+# (ครั้งแรก) ติดตั้ง dependency ของ component manager
+idf.py reconfigure
+
+# สร้างและอัปโหลดเฟิร์มแวร์
 idf.py build
-idf.py -p /dev/tty.usbmodem11101 -b 460800 flash
-idf.py -p /dev/tty.usbmodem11101 monitor
+idf.py -p <พอร์ต> flash
+idf.py -p <พอร์ต> monitor
 ```
 
-## Hardware Connections (ESP32-C6)
+> หมายเหตุ: ขณะ `idf.py build` component manager จะต้องดาวน์โหลด LVGL จาก `https://components-file.espressif.com` ให้เชื่อมต่ออินเทอร์เน็ต หรือทำการ mirror ไฟล์มาก่อน ถ้าออฟไลน์สามารถคัดลอกโฟลเดอร์ `managed_components/lvgl__lvgl` จากเครื่องที่ดาวน์โหลดสำเร็จมาไว้ล่วงหน้าได้
 
-| Peripheral                | Pin Mapping  |
-|---------------------------|--------------|
-| E-Paper BUSY              | GPIO20       |
-| E-Paper RST               | GPIO23       |
-| E-Paper DC                | GPIO15       |
-| E-Paper CS                | GPIO21       |
-| E-Paper MOSI              | GPIO0        |
-| E-Paper CLK               | GPIO1        |
-| FT6336 INT                | GPIO19       |
-| FT6336 RST                | GPIO18       |
-| FT6336 SDA                | GPIO7        |
-| FT6336 SCL                | GPIO6        |
+---
 
-## I²C Bus Diagnostics
+## การทำงานของ UI ตัวอย่าง
 
-- เมื่อ FT6336 initialisation ล้มเหลว ระบบจะสแกนบัส I²C และพิมพ์ address ที่พบ (หรือ error code) เพื่อช่วยตรวจสอบการเชื่อมต่อฮาร์ดแวร์
-- สามารถดูผลผ่าน `idf.py monitor`
+- ตัวเลข 5 หลักตรงกลางจอแสดงค่าปัจจุบัน (0-9 ซ้ำกันทุกหลัก) และจะเพิ่มขึ้นทุก 1 วินาที
+- โค้ดเตรียมโครงสร้างเพื่อรองรับวิดเจ็ตอื่นของ LVGL ได้ เช่น ปุ่ม, กราฟ, ตาราง เพียงสร้างวัตถุใหม่ใน `initLvgl()` และอัปเดตค่าตามต้องการ
+- หากต้องการเปลี่ยนฟอนต์สามารถเปิดใช้งานฟอนต์เพิ่มเติมผ่าน `add_compile_definitions()` ใน `CMakeLists.txt` หรือใช้ `lv_font_load` เพื่อโหลดฟอนต์แบบ binary
 
-## Touch & Display Behaviour
+---
 
-- ตัวเลขบนจอจะนับเพิ่มอัตโนมัติทุก 1 วินาที
-- การแตะฝั่งขวาของจอ (x > 240) จะนับเพิ่ม, ฝั่งซ้าย (x ≤ 240) จะนับลด
-- หมายเลขจะแสดงเฉพาะหลักเดียว (0-9) ตามชุดทรัพยากร bitmap ใน `assets.cpp`
-
-## โครงสร้างแฟ้มหลัก
+## โครงสร้างไฟล์สำคัญ
 
 ```
-├── CMakeLists.txt           # โปรเจ็กต์ ESP-IDF
+├── CMakeLists.txt                 # กำหนดโปรเจ็กต์ + macro ของ LVGL
+├── dependencies.lock              # lock dependency
+├── managed_components/
+│   └── lvgl__lvgl/                # โค้ด LVGL ที่ดึงมาจาก registry
 ├── components/
 │   └── gde_display/
-│       ├── assets.cpp/.h    # bitmap resources
-│       ├── epd_driver.cpp/.h
-│       ├── ft6336.cpp/.h
-│       └── CMakeLists.txt   # ลงทะเบียน component
-├── main/
-│   └── main.cpp             # application logic
-└── README.md                # (ไฟล์นี้)
+│       ├── epd_driver.cpp/.h      # SSD1677 driver + drawBitmap
+│       ├── assets.cpp/.h          # bitmap พื้นฐาน (ตัวเลข/พื้นหลัง)
+│       └── CMakeLists.txt
+└── main/
+    ├── idf_component.yml          # ระบุ dependency LVGL
+    ├── CMakeLists.txt             # ลงทะเบียน component `main`
+    └── main.cpp                   # logic แอป + UI
 ```
+
+---
+
+## เคล็ดลับและคำแนะนำ
+
+1. **การทดสอบบนฮาร์ดแวร์จริง**  
+   - e-paper partial update อาจใช้เวลาประมาณ 400 ms (ตามสเปก) อย่าลืมรอให้ `lvglFlushCallback()` กลับมาพร้อม `lv_display_flush_ready()` เสมอ
+   - หากจอดับ/ไม่รีเฟรช ให้ตรวจสอบขา BUSY และการต่อ GND ให้เรียบร้อย
+
+2. **เพิ่มวิดเจ็ตของ LVGL**  
+   - สร้างใน `initLvgl()` และเก็บ pointer ไว้ใน `g_lvgl_ctx` หรือสร้าง struct ของตัวเอง
+   - เรียก `lv_obj_align`, `lv_obj_set_size`, `lv_obj_add_event_cb` เพื่อควบคุมพฤติกรรม
+   - จำไว้ว่า flush callback จะถูกเรียกอัตโนมัติจาก `lv_timer_handler()` ที่เราป้อนในลูปหลัก
+
+3. **เพิ่มแหล่งข้อมูลอื่น**  
+   - ถ้าต้องการแสดงข้อมูลเซนเซอร์ ให้ดึงค่ามาอัปเดตวิดเจ็ตในลูปหลัก หรือใช้ `lv_timer` ของ LVGL เพื่อแยก task ภายในเฟรมเวิร์ก
+
+4. **ขยายฟังก์ชันของ driver**  
+   - ปัจจุบัน `drawBitmap()` รองรับบิตแมป 1 บิตที่ความกว้างหาร 8 ลงตัว หากต้องการรูปแบบอื่น (เช่น EPD 4 สี) ต้องปรับโค้ดให้รองรับข้อมูลหลายบิตและ waveform ใหม่ของ SSD1677
+
+---
+
+## ปัญหาที่พบบ่อย
+
+| อาการ | แนวทางตรวจสอบ |
+|-------|----------------|
+| จอไม่รีเฟรช | ตรวจดู log `LVGL flush ...` หรือ log error จาก `drawBitmap`; ตรวจสอบว่ามีการเชื่อม BUSY/RST/CS/MOSI/CLK ถูกต้อง |
+| ฟอนต์กลับหัว/กลับด้าน | ปัจจุบันแก้ด้วยการ mirror ภายใน `lvglFlushCallback()` แล้ว; หากเปลี่ยนการหมุนจอเพิ่มเติมให้ปรับที่ LVGL (`lv_display_set_rotation`) |
+| Build ไม่ผ่านเพราะดาวน์โหลด LVGL ไม่ได้ | เชื่อมต่อเน็ต หรือคัดลอกโฟลเดอร์ `managed_components/lvgl__lvgl` และ `dependencies.lock` จากเครื่องที่ติดตั้งสำเร็จ |
+| หน่วยความจำไม่พอ | ลด `kLvglBufferLines` หรือสร้างวิดเจ็ตให้น้อยลง; สามารถใช้ `LV_MEM_SIZE` ใน `lv_conf.h` ถ้าคอมไพล์แบบกำหนดเอง |
+
+---
+
+## การปรับแต่งต่อยอด
+
+- ถ้าอยากใช้ Touch panel (FT6336) เพิ่ม สามารถนำ driver จาก commit ก่อนหน้ากลับมา หรือสร้าง component เพิ่มแล้วเรียกจาก LVGL (ใช้ input device driver `lv_indev_drv`)
+- สามารถเพิ่มหน้า UI หลายหน้าแล้วเรียก `lv_scr_load()` สลับไปมา
+- หากต้องการเก็บ log เพิ่มเติม ให้อาศัย `ESP_LOG*` ในโค้ดเพื่อ debug partial update
+
+---
+
+หวังว่าคู่มือนี้จะช่วยให้เข้าใจโครงสร้างและวิธีใช้งานโปรเจ็กต์ LVGL + SSD1677 บน ESP32-C6 ได้อย่างครบถ้วน หากมีคำถามเพิ่มเติมสามารถสอบถามได้เลย! :D

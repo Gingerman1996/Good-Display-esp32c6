@@ -9,8 +9,8 @@
 
 namespace epd {
 
-constexpr int kWidth = 480;
-constexpr int kHeight = 800;
+constexpr int kWidth = 800;
+constexpr int kHeight = 480;
 constexpr int kBufferSize = kWidth * kHeight / 8;
 
 /** @brief SPI + GPIO configuration required by the e-paper panel. */

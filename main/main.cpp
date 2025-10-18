@@ -224,7 +224,7 @@ extern "C" void app_main(void) {
   vTaskDelay(pdMS_TO_TICKS(1000));
 
   ESP_ERROR_CHECK(epd_driver.hardwareInit(true));
-  // ESP_ERROR_CHECK(epd_driver.loadBaseMap(WhileBG, true));
+  ESP_ERROR_CHECK(epd_driver.loadBaseMap(WhileBG, true));
 
   initLvgl(epd_driver);
   int current_value = 0;
