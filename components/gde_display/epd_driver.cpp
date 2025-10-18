@@ -256,6 +256,19 @@ esp_err_t Driver::displayDigits(uint16_t x_startA, uint16_t y_startA, const uint
     return partialUpdate();
 }
 
+esp_err_t Driver::drawBitmap(uint16_t x_start, uint16_t y_start, const uint8_t *bitmap,
+                             uint16_t width_bits, uint16_t height_rows) {
+    ESP_RETURN_ON_FALSE(initialised_, ESP_ERR_INVALID_STATE, TAG, "driver not initialised");
+    ESP_RETURN_ON_FALSE(bitmap != nullptr, ESP_ERR_INVALID_ARG, TAG, "bitmap null");
+    ESP_RETURN_ON_FALSE(width_bits != 0 && (width_bits % 8u) == 0, ESP_ERR_INVALID_ARG, TAG,
+                        "width must be multiple of 8 bits");
+    ESP_RETURN_ON_FALSE(height_rows != 0, ESP_ERR_INVALID_ARG, TAG, "height 0");
+
+    ESP_RETURN_ON_ERROR(writePartialWindow(x_start, y_start, bitmap, height_rows, width_bits), TAG,
+                        "partial bitmap failed");
+    return partialUpdate();
+}
+
 /** @brief Put the panel into deep sleep mode to reduce power consumption. */
 esp_err_t Driver::deepSleep() {
     ESP_RETURN_ON_FALSE(initialised_, ESP_ERR_INVALID_STATE, TAG, "driver not initialised");
