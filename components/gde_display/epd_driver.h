@@ -49,6 +49,9 @@ class Driver {
                             uint16_t x_startD, uint16_t y_startD, const uint8_t *datasD,
                             uint16_t x_startE, uint16_t y_startE, const uint8_t *datasE,
                             uint16_t part_column, uint16_t part_line);
+    /** @brief Upload a single-bit bitmap and trigger a partial refresh. */
+    esp_err_t drawBitmap(uint16_t x_start, uint16_t y_start, const uint8_t *bitmap,
+                         uint16_t width_bits, uint16_t height_rows);
     /** @brief Request the display controller to enter deep sleep. */
     esp_err_t deepSleep();
 

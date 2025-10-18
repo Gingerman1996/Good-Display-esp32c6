@@ -10,4 +10,6 @@ idf_component_register(
         "."
     REQUIRES
         gde_display
+        lvgl
+        esp_timer
 )
