@@ -74,11 +74,11 @@ void updateSensorValues() {
   // อัพเดท status bar
   char temp_str[16];
   snprintf(temp_str, sizeof(temp_str), "%dC", temp);
-  lv_label_set_text(g_lvgl_ctx.status_humidity_label, temp_str);  // แก้ไข: temp ไปที่ humidity_label
+  lv_label_set_text(g_lvgl_ctx.status_temp_label, temp_str);  // temp ไปที่ temp_label (ซ้าย)
 
   char humi_str[16];
   snprintf(humi_str, sizeof(humi_str), "%d%%", humi);
-  lv_label_set_text(g_lvgl_ctx.status_temp_label, humi_str);  // แก้ไข: humi ไปที่ temp_label
+  lv_label_set_text(g_lvgl_ctx.status_humidity_label, humi_str);  // humi ไปที่ humidity_label (ขวา)
 
   // อัพเดทตาราง
   char co2_str[16];
