@@ -257,7 +257,7 @@ esp_err_t Driver::displayDigits(uint16_t x_startA, uint16_t y_startA, const uint
 }
 
 esp_err_t Driver::drawBitmap(uint16_t x_start, uint16_t y_start, const uint8_t *bitmap,
-                             uint16_t width_bits, uint16_t height_rows) {
+                             uint16_t width_bits, uint16_t height_rows, bool skip_refresh) {
     ESP_RETURN_ON_FALSE(initialised_, ESP_ERR_INVALID_STATE, TAG, "driver not initialised");
     ESP_RETURN_ON_FALSE(bitmap != nullptr, ESP_ERR_INVALID_ARG, TAG, "bitmap null");
     ESP_RETURN_ON_FALSE(width_bits != 0 && (width_bits % 8u) == 0, ESP_ERR_INVALID_ARG, TAG,
@@ -266,7 +266,12 @@ esp_err_t Driver::drawBitmap(uint16_t x_start, uint16_t y_start, const uint8_t *
 
     ESP_RETURN_ON_ERROR(writePartialWindow(x_start, y_start, bitmap, height_rows, width_bits), TAG,
                         "partial bitmap failed");
-    return partialUpdate();
+    
+    // ถ้า skip_refresh = true จะไม่ refresh จอ (ใช้สำหรับ batch update)
+    if (!skip_refresh) {
+        return partialUpdate();
+    }
+    return ESP_OK;
 }
 
 /** @brief Put the panel into deep sleep mode to reduce power consumption. */
@@ -276,6 +281,12 @@ esp_err_t Driver::deepSleep() {
     ESP_RETURN_ON_ERROR(sendCommand(0x10, payload.data(), payload.size()), TAG, "deep sleep failed");
     vTaskDelay(pdMS_TO_TICKS(100));
     return ESP_OK;
+}
+
+/** @brief Trigger a partial refresh without uploading new data. */
+esp_err_t Driver::triggerRefresh() {
+    ESP_RETURN_ON_FALSE(initialised_, ESP_ERR_INVALID_STATE, TAG, "driver not initialised");
+    return partialUpdate();
 }
 
 /** @brief Pulse the reset line according to the datasheet timing. */
